@@ -18,6 +18,7 @@ use windows::{
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
             LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
         },
+        UI::WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONERROR, MB_OKCANCEL},
     },
 };
 
@@ -334,10 +335,10 @@ unsafe extern "system" fn open_already_loaded_amdhip_impl(
         // * Later on a performance library (rocBLAS) loads ROCm 6 runtime
         // * Things explode
         if probe_perflibs {
-            delay_load_failure_hook_impl("hipblaslt.dll")
-                .or_else(|| delay_load_failure_hook_impl("libhipblaslt.dll"))
-                .or_else(|| delay_load_failure_hook_impl("rocblas.dll"))
-                .or_else(|| delay_load_failure_hook_impl("miopen.dll"));
+            try_load_from_self_or_hip("hipblaslt.dll")
+                .or_else(|| try_load_from_self_or_hip("libhipblaslt.dll"))
+                .or_else(|| try_load_from_self_or_hip("rocblas.dll"))
+                .or_else(|| try_load_from_self_or_hip("miopen.dll"));
         }
         let mut module = mem::zeroed();
         GetModuleHandleExW(0, w!("amdhip64_7.dll"), &mut module)
@@ -362,11 +363,37 @@ pub unsafe fn delay_load_failure_hook(
         .iter()
         .copied()
         .chain(alt_name)
-        .find_map(|name| unsafe { delay_load_failure_hook_impl(name) })
+        .find_map(|name| unsafe { try_load_from_self_or_hip(name) })
 }
 
-unsafe fn delay_load_failure_hook_impl(redirect_name: &'static str) -> Option<HMODULE> {
+pub unsafe fn try_load_from_self_or_hip(redirect_name: &'static str) -> Option<HMODULE> {
     try_load_from_self_dir(redirect_name).or_else(|| try_load_from_hip_path(redirect_name))
+}
+
+pub unsafe fn try_load_from_self_or_hip_with_message(
+    redirect_name: &'static str,
+) -> Option<HMODULE> {
+    let result =
+        try_load_from_self_dir(redirect_name).or_else(|| try_load_from_hip_path(redirect_name));
+    if result.is_none() {
+        let msg_result = MessageBoxW(
+            None,
+            w!("ZLUDA was not able to load rocblas.dll.\nPlease make sure you have HIP SDK installed\n\nPress OK to open HIP SDK website\nPress Cancel to ignore this message"),
+            None,
+            MB_ICONERROR | MB_OKCANCEL,
+        );
+        if msg_result == IDOK {
+            windows::Win32::UI::Shell::ShellExecuteW(
+                None,
+                w!("open"),
+                w!("https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html"),
+                None,
+                None,
+                windows::Win32::UI::WindowsAndMessaging::SW_SHOW,
+            );
+        }
+    }
+    result
 }
 
 pub unsafe fn delay_load_check(

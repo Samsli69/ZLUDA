@@ -5,20 +5,28 @@ use std::{
     ops::ControlFlow,
     os::windows::ffi::{OsStrExt, OsStringExt},
     path::PathBuf,
+    ptr,
 };
 use trie_hard::TrieHard;
 use uuid::uuid;
 use widestring::{u16str, U16Str};
 use windows::{
-    core::{w, PCWSTR},
+    core::{w, HRESULT, PCWSTR},
     Win32::{
-        Foundation::HMODULE,
+        Foundation::{HINSTANCE, HMODULE, HWND, LPARAM, S_OK, WPARAM},
         System::LibraryLoader::{
             GetModuleFileNameA, GetModuleFileNameW, GetModuleHandleExW, LoadLibraryExW,
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
             LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
         },
-        UI::WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONERROR, MB_OKCANCEL},
+        UI::{
+            Controls::{
+                TaskDialogIndirect, TASKDIALOGCONFIG, TASKDIALOGCONFIG_0, TASKDIALOGCONFIG_1,
+                TASKDIALOG_NOTIFICATIONS, TDCBF_CLOSE_BUTTON, TDF_ENABLE_HYPERLINKS,
+                TDN_HYPERLINK_CLICKED, TD_ERROR_ICON,
+            },
+            WindowsAndMessaging::IDCLOSE,
+        },
     },
 };
 
@@ -376,24 +384,58 @@ pub unsafe fn try_load_from_self_or_hip_with_message(
     let result =
         try_load_from_self_dir(redirect_name).or_else(|| try_load_from_hip_path(redirect_name));
     if result.is_none() {
-        let msg_result = MessageBoxW(
-            None,
-            w!("ZLUDA was not able to load rocblas.dll.\nPlease make sure you have HIP SDK installed\n\nPress OK to open HIP SDK website\nPress Cancel to ignore this message"),
-            None,
-            MB_ICONERROR | MB_OKCANCEL,
-        );
-        if msg_result == IDOK {
-            windows::Win32::UI::Shell::ShellExecuteW(
-                None,
-                w!("open"),
-                w!("https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html"),
-                None,
-                None,
-                windows::Win32::UI::WindowsAndMessaging::SW_SHOW,
-            );
-        }
+        let config = TASKDIALOGCONFIG {
+            cbSize: mem::size_of::<TASKDIALOGCONFIG>() as u32,
+            hwndParent: HWND(ptr::null_mut()),
+            hInstance: HINSTANCE(ptr::null_mut()),
+            dwFlags: TDF_ENABLE_HYPERLINKS,
+            dwCommonButtons: TDCBF_CLOSE_BUTTON,
+            pszWindowTitle: w!("ZLUDA error"),
+            Anonymous1: TASKDIALOGCONFIG_0 {
+                pszMainIcon: TD_ERROR_ICON,
+            },
+            pszMainInstruction: w!("ZLUDA was not able to load rocblas.dll"),
+            pszContent: w!("<A HREF=\"http://google.com\">Click here for an explanation on how to set up HIP SDK</A>"),
+            cButtons: 0,
+            pButtons: ptr::null_mut(),
+            nDefaultButton: IDCLOSE.0,
+            cRadioButtons: 0,
+            pRadioButtons: ptr::null_mut(),
+            nDefaultRadioButton: 0,
+            pszVerificationText: PCWSTR::null(),
+            pszExpandedInformation: PCWSTR::null(),
+            pszExpandedControlText: PCWSTR::null(),
+            pszCollapsedControlText: PCWSTR::null(),
+            Anonymous2: TASKDIALOGCONFIG_1::default(),
+            pszFooter: PCWSTR::null(),
+            pfCallback: Some(task_dialog_callback),
+            lpCallbackData: 0,
+            cxWidth: 0,
+        };
+        TaskDialogIndirect(&config, None, None, None).ok();
     }
     result
+}
+
+unsafe extern "system" fn task_dialog_callback(
+    _hwnd: HWND,
+    msg: TASKDIALOG_NOTIFICATIONS,
+    _wparam: WPARAM,
+    lparam: LPARAM,
+    _lprefdata: isize,
+) -> HRESULT {
+    if msg != TDN_HYPERLINK_CLICKED {
+        return S_OK;
+    }
+    windows::Win32::UI::Shell::ShellExecuteW(
+        None,
+        w!("open"),
+        PCWSTR::from_raw(lparam.0 as *const u16),
+        None,
+        None,
+        windows::Win32::UI::WindowsAndMessaging::SW_SHOW,
+    );
+    S_OK
 }
 
 pub unsafe fn delay_load_check(

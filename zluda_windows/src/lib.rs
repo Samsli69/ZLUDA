@@ -9,7 +9,7 @@ use std::{
 };
 use trie_hard::TrieHard;
 use uuid::uuid;
-use widestring::{u16str, U16Str};
+use widestring::{u16str, U16Str, U16String};
 use windows::{
     core::{w, HRESULT, PCWSTR},
     Win32::{
@@ -381,6 +381,9 @@ pub unsafe fn try_load_from_self_or_hip(redirect_name: &'static str) -> Option<H
 pub unsafe fn try_load_from_self_or_hip_with_message(
     redirect_name: &'static str,
 ) -> Option<HMODULE> {
+    let mut title = U16String::from_str("ZLUDA failed to load ");
+    title.push_str(redirect_name);
+    title.push_char(0 as char);
     let result =
         try_load_from_self_dir(redirect_name).or_else(|| try_load_from_hip_path(redirect_name));
     if result.is_none() {
@@ -394,8 +397,8 @@ pub unsafe fn try_load_from_self_or_hip_with_message(
             Anonymous1: TASKDIALOGCONFIG_0 {
                 pszMainIcon: TD_ERROR_ICON,
             },
-            pszMainInstruction: w!("ZLUDA was not able to load rocblas.dll"),
-            pszContent: w!("<A HREF=\"http://google.com\">Click here for an explanation on how to set up HIP SDK</A>"),
+            pszMainInstruction: PCWSTR(title.as_ptr()),
+            pszContent: w!("<A HREF=\"https://zluda.readthedocs.io/latest/hip_sdk.html\">Click here to learn how to set up the HIP SDK</A>"),
             cButtons: 0,
             pButtons: ptr::null_mut(),
             nDefaultButton: IDCLOSE.0,

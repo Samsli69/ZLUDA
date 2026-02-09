@@ -13,7 +13,7 @@ On Windows, in addition to installing the GPU driver, you need to install the HI
 
 ✅ Automatic installation\
 ✅ Stable and supported by AMD\
-❌ Older code version\
+❌ Older code\
 ❌ No Machine Learning support (PyTorch and TensorFlow will not work)
 
 ### Installation
@@ -27,7 +27,7 @@ On Windows, in addition to installing the GPU driver, you need to install the HI
 
 ❌ Manual installation\
 ❌ Unstable and unsupported by AMD\
-✅ Freshest possible code version\
+✅ Newer code\
 ✅ Machine Learning support (required for PyTorch, TensorFlow, etc.)
 
 ### Installation
